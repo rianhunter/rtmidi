@@ -181,7 +181,7 @@ class MidiOutAlsa: public MidiOutApi
   void setPortName( const std::string &portName);
   unsigned int getPortCount( void );
   std::string getPortName( unsigned int portNumber );
-  void sendMessage( const unsigned char *message, size_t size );
+  void sendMessages( const IOVec *vec, size_t count );
 
  protected:
   void initialize( const std::string& clientName );

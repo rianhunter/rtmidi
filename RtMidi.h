@@ -121,6 +121,11 @@ class RTMIDI_DLL_PUBLIC RtMidiError : public std::exception
  */
 typedef void (*RtMidiErrorCallback)( RtMidiError::Type type, const std::string &errorText, void *userData );
 
+struct RTMIDI_DLL_PUBLIC IOVec {
+  unsigned char *message;
+  size_t size;
+};
+
 class MidiApi;
 
 class RTMIDI_DLL_PUBLIC RtMidi
@@ -446,6 +451,23 @@ class RTMIDI_DLL_PUBLIC RtMidiOut : public RtMidi
   */
   void sendMessage( const unsigned char *message, size_t size );
 
+  //! Immediately send multiple messages out an open MIDI output port.
+  /*!
+      An exception is thrown if an error occurs during output or an
+      output connection was not previously established.
+  */
+  void sendMessages( const std::vector<IOVec> *vec );
+
+  //! Immediately send multiple messages out an open MIDI output port.
+  /*!
+      An exception is thrown if an error occurs during output or an
+      output connection was not previously established.
+
+      \param vecs    A pointer to an array of IOVec
+      \param count   Number of IOVecs in vecs
+  */
+  void sendMessages( const IOVec *vecs, size_t count );
+
   //! Set an error callback function to be invoked when an error has occured.
   /*!
     The callback function will be called whenever an error has occured. It is best
@@ -574,7 +596,19 @@ class RTMIDI_DLL_PUBLIC MidiOutApi : public MidiApi
 
   MidiOutApi( void );
   virtual ~MidiOutApi( void );
-  virtual void sendMessage( const unsigned char *message, size_t size ) = 0;
+  virtual void sendMessage( const unsigned char *message, size_t size ) {
+    // default implementation, implementations can implement optimized version
+    IOVec vec;
+    vec.message = const_cast<unsigned char *>(message);
+    vec.size = size;
+    sendMessages(&vec, 1);
+  }
+  virtual void sendMessages( const IOVec *vec, size_t count ) {
+    // default implementation, implementations can implement optimized version
+    for (size_t i = 0; i < count; i++) {
+      sendMessage(vec[i].message, vec[i].size);
+    }
+  }
 };
 
 // **************************************************************** //
@@ -605,6 +639,8 @@ inline unsigned int RtMidiOut :: getPortCount( void ) { return rtapi_->getPortCo
 inline std::string RtMidiOut :: getPortName( unsigned int portNumber ) { return rtapi_->getPortName( portNumber ); }
 inline void RtMidiOut :: sendMessage( const std::vector<unsigned char> *message ) { ((MidiOutApi *)rtapi_)->sendMessage( &message->at(0), message->size() ); }
 inline void RtMidiOut :: sendMessage( const unsigned char *message, size_t size ) { ((MidiOutApi *)rtapi_)->sendMessage( message, size ); }
+inline void RtMidiOut :: sendMessages( const std::vector<IOVec> *vec ) { ((MidiOutApi *)rtapi_)->sendMessages( &vec->at(0), vec->size() ); }
+inline void RtMidiOut :: sendMessages( const IOVec *vec, size_t count ) { ((MidiOutApi *)rtapi_)->sendMessages( vec, count ); }
 inline void RtMidiOut :: setErrorCallback( RtMidiErrorCallback errorCallback, void *userData ) { rtapi_->setErrorCallback(errorCallback, userData); }
 
 #endif
