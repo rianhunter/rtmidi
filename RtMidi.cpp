@@ -2237,47 +2237,51 @@ void MidiOutAlsa :: openVirtualPort( const std::string &portName )
   }
 }
 
-void MidiOutAlsa :: sendMessage( const unsigned char *message, size_t size )
+void MidiOutAlsa :: sendMessages( const IOVec *vecs, size_t count )
 {
   int result;
   AlsaMidiData *data = static_cast<AlsaMidiData *> (apiData_);
-  unsigned int nBytes = static_cast<unsigned int> (size);
-  if ( nBytes > data->bufferSize ) {
-    data->bufferSize = nBytes;
-    result = snd_midi_event_resize_buffer ( data->coder, nBytes);
-    if ( result != 0 ) {
-      errorString_ = "MidiOutAlsa::sendMessage: ALSA error resizing MIDI event buffer.";
-      error( RtMidiError::DRIVER_ERROR, errorString_ );
+  for (size_t i = 0; i < count; ++i) {
+    const IOVec &vec = vecs[i];
+
+    unsigned int nBytes = static_cast<unsigned int> (vec.size);
+    if ( nBytes > data->bufferSize ) {
+      data->bufferSize = nBytes;
+      result = snd_midi_event_resize_buffer ( data->coder, nBytes);
+      if ( result != 0 ) {
+        errorString_ = "MidiOutAlsa::sendMessage: ALSA error resizing MIDI event buffer.";
+        error( RtMidiError::DRIVER_ERROR, errorString_ );
+        return;
+      }
+      free (data->buffer);
+      data->buffer = (unsigned char *) malloc( data->bufferSize );
+      if ( data->buffer == NULL ) {
+        errorString_ = "MidiOutAlsa::initialize: error allocating buffer memory!\n\n";
+        error( RtMidiError::MEMORY_ERROR, errorString_ );
+        return;
+      }
+    }
+
+    snd_seq_event_t ev;
+    snd_seq_ev_clear(&ev);
+    snd_seq_ev_set_source(&ev, data->vport);
+    snd_seq_ev_set_subs(&ev);
+    snd_seq_ev_set_direct(&ev);
+    for ( unsigned int i=0; i<nBytes; ++i ) data->buffer[i] = vec.message[i];
+    result = snd_midi_event_encode( data->coder, data->buffer, (long)nBytes, &ev );
+    if ( result < (int)nBytes ) {
+      errorString_ = "MidiOutAlsa::sendMessage: event parsing error!";
+      error( RtMidiError::WARNING, errorString_ );
       return;
     }
-    free (data->buffer);
-    data->buffer = (unsigned char *) malloc( data->bufferSize );
-    if ( data->buffer == NULL ) {
-    errorString_ = "MidiOutAlsa::initialize: error allocating buffer memory!\n\n";
-    error( RtMidiError::MEMORY_ERROR, errorString_ );
-    return;
+
+    // Send the event.
+    result = snd_seq_event_output(data->seq, &ev);
+    if ( result < 0 ) {
+      errorString_ = "MidiOutAlsa::sendMessage: error sending MIDI message to port.";
+      error( RtMidiError::WARNING, errorString_ );
+      return;
     }
-  }
-
-  snd_seq_event_t ev;
-  snd_seq_ev_clear(&ev);
-  snd_seq_ev_set_source(&ev, data->vport);
-  snd_seq_ev_set_subs(&ev);
-  snd_seq_ev_set_direct(&ev);
-  for ( unsigned int i=0; i<nBytes; ++i ) data->buffer[i] = message[i];
-  result = snd_midi_event_encode( data->coder, data->buffer, (long)nBytes, &ev );
-  if ( result < (int)nBytes ) {
-    errorString_ = "MidiOutAlsa::sendMessage: event parsing error!";
-    error( RtMidiError::WARNING, errorString_ );
-    return;
-  }
-
-  // Send the event.
-  result = snd_seq_event_output(data->seq, &ev);
-  if ( result < 0 ) {
-    errorString_ = "MidiOutAlsa::sendMessage: error sending MIDI message to port.";
-    error( RtMidiError::WARNING, errorString_ );
-    return;
   }
   snd_seq_drain_output(data->seq);
 }
